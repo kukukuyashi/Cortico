@@ -14,6 +14,8 @@ export type MinecraftServerPhase = 'stopped' | 'starting' | 'running' | 'error';
 
 export interface MinecraftServerState {
   enabled: boolean;
+  /** 本地目录已配置、生命周期归本 World;仅可连的外部服务器不算。 */
+  managed: boolean;
   phase: MinecraftServerPhase;
   address: string;
   detail: string | null;
@@ -250,6 +252,7 @@ export class MinecraftServerManager {
     const enabled = this.opts.enabled?.() ?? true;
     return {
       enabled,
+      managed: serverDir.trim() !== '',
       phase: this.phase,
       address: this.address,
       detail: enabled ? this.detail : '受管服务器开关已关闭',

@@ -592,6 +592,7 @@ describe('MinecraftWorld World 面(未连接状态)', () => {
 describe('MinecraftWorld 受管服务器开关', () => {
   const serverState = (enabled: boolean, phase: MinecraftServerState['phase'] = 'stopped'): MinecraftServerState => ({
     enabled,
+    managed: true,
     phase,
     address: '127.0.0.1:1',
     detail: null,

@@ -46,6 +46,10 @@ interface MinecraftLaneCommon {
 
 /** `mount.server.*` */
 export interface MinecraftServerState extends MinecraftLaneCommon {
+  /** 本地目录已配置、生命周期归本 World;仅可连的外部服务器不算 */
+  managed: boolean;
+  /** 受管服务器开关;非受管时恒 true */
+  enabled: boolean;
   address: string;
   /** 端口当下可连(外部自己起的服务器也算) */
   reachable: boolean;

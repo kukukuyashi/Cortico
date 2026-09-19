@@ -35,6 +35,9 @@ interface LaneState {
   pid: number | null;
   reachable?: boolean;
   windowReady?: boolean;
+  /** 服务器链路才有:本地目录归本 World 托管、受管开关开着;客户端的 enabled 语义不同,不参与开关闸判定 */
+  managed?: boolean;
+  enabled?: boolean;
 }
 
 /** 就绪判据:有端口的看端口,没端口的(客户端)看窗口。 */
@@ -116,7 +119,9 @@ function renderMount<T extends LaneState>(
   }
   view.row.set(tone, word, extra(st));
   view.start.disabled = st.phase === 'starting' || isUp(st);
-  view.stop.disabled = st.pid === null && !['starting', 'running'].includes(st.phase);
+  // 受管服务器开关还开着时停止始终可按:按下即把开关拨关再走关停流程。
+  const switchOn = st.managed === true && st.enabled === true;
+  view.stop.disabled = st.pid === null && !['starting', 'running'].includes(st.phase) && !switchOn;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,10 +334,18 @@ export const mountPanel: ConsolePanel = {
       view.start.addEventListener('click', () => { void doStart(); }, { signal: ctx.signal });
       view.stop.addEventListener('click', () => { void doStop(); }, { signal: ctx.signal });
 
+      /** 受管服务器开关挡着这次启停(停要关、启要开);其余链路没有这道闸。 */
+      const switchGate = (st: LaneState, enabled: boolean): boolean =>
+        lane === 'server' && st.managed === true && st.enabled === enabled;
+
       async function doStart(): Promise<void> {
         msg.say(startNote);
         try {
-          const st = await ctx.invoke<LaneState>(`${lane}.start`);
+          let st = await ctx.invoke<LaneState>(`${lane}.start`);
+          if (switchGate(st, false)) {
+            await ctx.setConfig('world:minecraft', { 'worlds.minecraft.local.serverEnabled': true });
+            st = await ctx.invoke<LaneState>(`${lane}.start`);
+          }
           render(lane, st);
           if (st.phase === 'error') { msg.say(`[失败] ${name} ${st.detail || ''}`, true); return; }
           msg.say(await waitReady(lane, name));
@@ -343,8 +356,13 @@ export const mountPanel: ConsolePanel = {
       async function doStop(): Promise<void> {
         msg.say('');
         try {
-          render(lane, await ctx.invoke<LaneState>(`${lane}.stop`));
-          msg.say(`${name}已停止`);
+          let st = await ctx.invoke<LaneState>(`${lane}.stop`);
+          if (switchGate(st, true)) {
+            await ctx.setConfig('world:minecraft', { 'worlds.minecraft.local.serverEnabled': false });
+            st = await ctx.invoke<LaneState>(`${lane}.stop`);
+          }
+          render(lane, st);
+          msg.say(st.detail ?? `${name}已停止`);
         } catch (err) {
           if (alive()) msg.say(`停止失败: ${errText(err)}`, true);
         }

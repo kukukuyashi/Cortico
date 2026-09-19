@@ -26,6 +26,7 @@ const TYPE_LABEL: Record<string, string> = {
   'qq.watch': '监听',
   'qq.forward': '转发',
   'qq.reply.uncaptured': '引用',
+  'qq.online': '上线',
 };
 
 /** 服务端把它夹在 1..2000 之间,这里只给几个常用挡位。 */

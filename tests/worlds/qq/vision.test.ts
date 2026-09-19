@@ -817,6 +817,8 @@ describe('QQWorld 外挂视觉接线', () => {
     );
     await mod.start(host);
     await mod.waitReady();
+    // 启动期的 qq.online 不属于各用例的观察范围
+    host.pushed.length = 0;
   }
 
   afterEach(async () => {

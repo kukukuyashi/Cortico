@@ -66,6 +66,8 @@ interface QQWorldConfig {
   /** 监听的私聊QQ号集合 */
   privates: number[];
   token: string;
+  /** 停机断开前向每个监听群发送的告别语;空/缺省=不发 */
+  offlineNotice?: string;
   /** Event rendering timezone. */
   timezone?: string;
   /** 重连退避参数透传(测试用短退避) */
@@ -155,6 +157,9 @@ export class QQWorld implements World {
 
   /** 最近一次成功组装的动态账号/会话事实(断线期间沿用；不缓存可编辑固定文本) */
   private cachedDynamicContext?: string;
+
+  /** 本次 start 以来是否就绪过:区分首发上线与断线重连的 qq.online 事件 */
+  private readyOnce = false;
 
   /**
    * 消息处理串行链:所有消息严格按到达顺序处理。图片去重预判(precheckDup)
@@ -570,12 +575,37 @@ export class QQWorld implements World {
     driver.onReady(() => {
       this.envPromptVars(); // 为副作用调用:趁 identity 在,把群名快照存进缓存
       this.log.info('身份就绪', { context: this.cachedDynamicContext });
+      const reconnected = this.readyOnce;
+      this.readyOnce = true;
+      host.pushEvent({
+        type: 'qq.online',
+        ts: nowIso(this.timezone),
+        source: this.id,
+        text: reconnected
+          ? '[系统] QQ 断线后重新连上,监听会话恢复收发。'
+          : '[系统] QQ 已连接上线,监听的群和私聊开始收发消息。',
+        meta: { reconnected },
+      }).catch((e) => host.log.warn('上线事件投递失败', { err: String(e) }));
     });
     await driver.start();
   }
 
   async stop(): Promise<void> {
-    await this.driver?.stop();
+    const driver = this.driver;
+    const notice = this.cfg.offlineNotice?.trim();
+    // 告别语走原始 callApi 而不是 sendToTarget:停机时事件库可能已封口,
+    // qq.self 回录不是告别语的前置条件。
+    if (notice && driver?.connected) {
+      const message = buildOutgoing({ text: notice });
+      const results = await Promise.allSettled(
+        [...this.watchedGroups].map((gid) =>
+          driver.callApi('send_group_msg', { group_id: gid, message }, 3000),
+        ),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed) this.log.warn('下线告别未送达部分群', { failed, total: results.length });
+    }
+    await driver?.stop();
   }
 
   /** 测试/联调辅助:等驱动连接并完成身份初始化 */

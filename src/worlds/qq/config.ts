@@ -14,6 +14,8 @@ export const QQ_DEFAULTS = {
   groups: [] as QQRosterEntry[],
   privates: [] as QQRosterEntry[],
   token: '',
+  /** 停机断开前向每个监听群发送的告别语;空串=不发 */
+  offlineNotice: '',
 } as const;
 
 /**
@@ -24,16 +26,22 @@ export const QQ_SECRETS = { vision: 'OPENROUTER_API_KEY' } as const;
 
 /**
  * 本 World 声明的可调项。只声明**World 自己**的参数:连接与监听名单有
- * 专用面板(要卡片式增删、要重启),这里放的是自带视觉的行为旋钮。
+ * 专用面板(要卡片式增删、要重启),这里放告别语和自带视觉的行为旋钮。
  */
 export const QQ_CONFIG_GROUP: ConfigGroup = {
   id: 'world:qq',
   owner: 'world:qq',
   schema: {
     type: 'object',
-    title: 'QQ · 辅助视觉',
-    description: '图片描述写入事件库。',
+    title: 'QQ',
+    description: '告别语与辅助视觉参数。图片描述写入事件库。',
     properties: {
+      'worlds.qq.offlineNotice': {
+        type: 'string',
+        title: '下线告别语',
+        'x-hot': false,
+        description: '停机断开前向每个监听群发送的固定文本;留空不发。重启生效。',
+      },
       'worlds.qq.vision.enabled': {
         type: 'boolean',
         title: '开启辅助视觉',
@@ -104,5 +112,7 @@ export interface QQConfigSection {
   privates: QQRosterEntry[];
   /** OneBot access token,可空 */
   token: string;
+  /** 停机断开前向每个监听群发送的告别语;空串=不发 */
+  offlineNotice: string;
   vision: VisionConfig;
 }

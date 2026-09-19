@@ -31,6 +31,7 @@ export const QQ: WorldDefinition<QQConfigSection> = {
         groups: enabledRosterIds(cfg.groups),
         privates: enabledRosterIds(cfg.privates),
         token: cfg.token,
+        offlineNotice: cfg.offlineNotice,
         timezone: ctx.timezone,
       },
       {

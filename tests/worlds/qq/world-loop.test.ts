@@ -33,6 +33,8 @@ beforeEach(async () => {
   mod = new QQWorld({ wsUrl: `ws://127.0.0.1:${port}`, groups: [GROUP], privates: [], token: '' });
   await mod.start(host);
   await mod.waitReady();
+  // 启动期的 qq.online 不属于各用例的观察范围
+  host.pushed.length = 0;
 });
 
 afterEach(async () => {
@@ -725,10 +727,12 @@ describe('重启后映射重建', () => {
     });
     await mod.start(host);
     await mod.waitReady();
+    // 重启的 qq.online 不在本用例观察范围
+    host.pushed.length = 0;
 
     // 撤回老消息:消息索引和名字都应从meta重建出来
     mock.emitRecall(mid, { user_id: 1001 });
-    await waitUntil(() => host.pushed.length === 2, '撤回入库');
-    expect(host.pushed[1].event.text).toContain(`阿明(1001) 撤回了一条消息(#${mid})`);
+    await waitUntil(() => host.pushed.length === 1, '撤回入库');
+    expect(host.pushed[0].event.text).toContain(`阿明(1001) 撤回了一条消息(#${mid})`);
   });
 });

@@ -718,6 +718,7 @@ export class BilibiliWorld implements World {
     const server = new BilibiliOverlayServer({
       preferredPort: this.overlayConfig.port,
       assets: this.assets,
+      tts: this.overlayConfig.tts,
       snapshot: () => this.overlaySnapshot(),
       editor: {
         state: () => this.overlayState(),

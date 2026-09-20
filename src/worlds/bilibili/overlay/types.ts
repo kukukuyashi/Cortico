@@ -169,11 +169,22 @@ export interface BilibiliOverlayDesign {
   placements: OverlayPlacement[];
 }
 
+export interface OverlayTtsConfig {
+  enabled: boolean;
+  /** 本机 TTS 合成接口,如 GPT-SoVITS api_v2 的 http://127.0.0.1:9880/tts */
+  apiUrl: string;
+  /** 随 text 一起转发的 query 参数(声线参考音频、提示词等),形如 a=1&b=2 */
+  params: string;
+  timeoutMs: number;
+  maxChars: number;
+}
+
 export interface BilibiliOverlayConfig {
   enabled: boolean;
   port: number;
   agentNoticeMaxChars: number;
   design: BilibiliOverlayDesign;
+  tts: OverlayTtsConfig;
 }
 
 export interface OverlayAudienceFacts {

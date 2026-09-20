@@ -17,6 +17,9 @@
   let typingToken = 0;
   let mockToken = 0;
   let activeMockComponentId = '';
+  let seenAnnouncementRevision = -1;
+  let ttsBusy = false;
+  const ttsPending = [];
 
   if (editorPreview) document.body.dataset.wallMode = 'dark';
 
@@ -37,6 +40,7 @@
     if (packet.type === 'announcement' && packet.agentAnnouncement) {
       announcement = packet.agentAnnouncement;
       updateAnnouncement();
+      speakAnnouncement(announcement);
       return;
     }
     if (packet.type === 'audience' && packet.event) renderAudience(packet.event);
@@ -70,7 +74,46 @@
     design = packet.design || design;
     builtinStyles = Array.isArray(packet.builtinStyles) ? packet.builtinStyles : builtinStyles;
     announcement = packet.agentAnnouncement || announcement;
+    if (typeof announcement.revision === 'number' && announcement.revision > seenAnnouncementRevision) {
+      seenAnnouncementRevision = announcement.revision;
+    }
     renderScene();
+  }
+
+  function speakAnnouncement(state) {
+    if (editorPreview) return;
+    const revision = typeof state.revision === 'number' ? state.revision : -1;
+    const text = typeof state.text === 'string' ? state.text.trim() : '';
+    if (revision <= seenAnnouncementRevision || !text) return;
+    seenAnnouncementRevision = revision;
+    ttsPending.push(text);
+    if (ttsPending.length > 2) ttsPending.splice(0, ttsPending.length - 2);
+    void pumpTts();
+  }
+
+  async function pumpTts() {
+    if (ttsBusy) return;
+    ttsBusy = true;
+    while (ttsPending.length) {
+      const text = ttsPending.shift();
+      try {
+        const res = await fetch(`/api/tts?text=${encodeURIComponent(text)}`);
+        if (!res.ok) continue;
+        await playAudio(await res.blob());
+      } catch { /* 合成或播放失败跳过本条 */ }
+    }
+    ttsBusy = false;
+  }
+
+  function playAudio(blob) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      const done = () => { URL.revokeObjectURL(url); resolve(); };
+      audio.onended = done;
+      audio.onerror = done;
+      audio.play().catch(done);
+    });
   }
 
   function renderScene() {

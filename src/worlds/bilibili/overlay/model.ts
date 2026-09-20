@@ -114,6 +114,13 @@ export const BILIBILI_OVERLAY_DEFAULTS: BilibiliOverlayConfig = {
   enabled: true,
   port: 7795,
   agentNoticeMaxChars: 200,
+  tts: {
+    enabled: false,
+    apiUrl: '',
+    params: '',
+    timeoutMs: 30000,
+    maxChars: 600,
+  },
   design: {
     schemaVersion: OVERLAY_SCHEMA_VERSION,
     canvas: { width: 1920, height: 1080 },
@@ -187,7 +194,21 @@ export function normalizeOverlayConfig(value: unknown): BilibiliOverlayConfig {
       5000,
       BILIBILI_OVERLAY_DEFAULTS.agentNoticeMaxChars,
     ),
+    tts: normalizeTts(raw.tts),
     design: normalizeOverlayDesign(raw.design),
+  };
+}
+
+function normalizeTts(value: unknown): BilibiliOverlayConfig['tts'] {
+  const raw = object(value);
+  const defaults = BILIBILI_OVERLAY_DEFAULTS.tts;
+  const apiUrl = text(raw.apiUrl, '', 2048);
+  return {
+    enabled: bool(raw.enabled, defaults.enabled),
+    apiUrl: URL_RE.test(apiUrl) ? apiUrl : '',
+    params: text(raw.params, defaults.params, 4000),
+    timeoutMs: integer(raw.timeoutMs, 1000, 120000, defaults.timeoutMs),
+    maxChars: integer(raw.maxChars, 1, 2000, defaults.maxChars),
   };
 }
 

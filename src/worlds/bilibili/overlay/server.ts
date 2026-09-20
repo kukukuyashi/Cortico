@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import type { Logger } from '../../../core/types.ts';
-import type { AgentAnnouncementState, OverlayAudienceEvent } from './types.ts';
+import type { AgentAnnouncementState, OverlayAudienceEvent, OverlayTtsConfig } from './types.ts';
 import { OverlayAssetStore } from './assets.ts';
 
 const STATIC_DIR = fileURLToPath(new URL('./web/', import.meta.url));
@@ -18,6 +18,8 @@ const STATIC_FILES: Record<string, { file: string; type: string }> = {
 const KEEPALIVE_MS = 15_000;
 const SSE_PAD = `: ${' '.repeat(2048)}\n\n`;
 const MAX_EDITOR_BODY_BYTES = 12 * 1024 * 1024;
+const MAX_TTS_AUDIO_BYTES = 20 * 1024 * 1024;
+const TTS_CACHE_LIMIT = 8;
 const HOST = '127.0.0.1';
 
 export interface BilibiliOverlayEditorActions {
@@ -35,6 +37,7 @@ interface BilibiliOverlayServerOptions {
   assets: OverlayAssetStore;
   snapshot: () => Record<string, unknown>;
   editor: BilibiliOverlayEditorActions;
+  tts?: OverlayTtsConfig;
 }
 
 export class BilibiliOverlayServer {
@@ -42,6 +45,7 @@ export class BilibiliOverlayServer {
   private boundPort: number | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
   private readonly subscribers = new Set<ServerResponse>();
+  private readonly ttsCache = new Map<string, { mime: string; body: Buffer }>();
   private seq = 0;
 
   constructor(private readonly options: BilibiliOverlayServerOptions) {}
@@ -167,6 +171,10 @@ export class BilibiliOverlayServer {
       this.json(response, 200, this.options.editor.state());
       return;
     }
+    if (path === '/api/tts' && request.method === 'GET') {
+      await this.onTts(url, response);
+      return;
+    }
     if (path.startsWith('/api/editor/')) {
       await this.onEditorRequest(request, response, path);
       return;
@@ -216,6 +224,62 @@ export class BilibiliOverlayServer {
     response.write(`data: ${JSON.stringify({ type: 'snapshot', ...this.options.snapshot() })}\n\n`);
     this.subscribers.add(response);
     response.on('close', () => this.subscribers.delete(response));
+  }
+
+  private async onTts(url: URL, response: ServerResponse): Promise<void> {
+    const tts = this.options.tts;
+    if (!tts?.enabled || !tts.apiUrl) {
+      this.json(response, 503, { error: 'TTS 未启用' });
+      return;
+    }
+    const text = (url.searchParams.get('text') ?? '').slice(0, tts.maxChars).trim();
+    if (!text) {
+      this.json(response, 400, { error: 'text 为空' });
+      return;
+    }
+    let upstream: URL;
+    try {
+      upstream = new URL(tts.apiUrl);
+    } catch {
+      this.json(response, 500, { error: 'TTS 接口地址无效' });
+      return;
+    }
+    for (const [key, value] of new URLSearchParams(tts.params)) upstream.searchParams.set(key, value);
+    upstream.searchParams.set('text', text);
+    const key = upstream.toString();
+    const cached = this.ttsCache.get(key);
+    if (cached) {
+      this.audio(response, cached.mime, cached.body);
+      return;
+    }
+    let result: { mime: string; body: Buffer };
+    try {
+      const res = await fetch(upstream, { signal: AbortSignal.timeout(tts.timeoutMs) });
+      if (!res.ok) {
+        this.json(response, 502, { error: `TTS 上游返回 ${res.status}` });
+        return;
+      }
+      const body = Buffer.from(await res.arrayBuffer());
+      if (!body.length || body.length > MAX_TTS_AUDIO_BYTES) {
+        this.json(response, 502, { error: 'TTS 上游返回了无效音频' });
+        return;
+      }
+      result = { mime: res.headers.get('content-type') ?? 'audio/wav', body };
+    } catch (error) {
+      this.json(response, 502, { error: `TTS 上游不可达: ${error instanceof Error ? error.message : String(error)}` });
+      return;
+    }
+    if (this.ttsCache.size >= TTS_CACHE_LIMIT) this.ttsCache.delete(this.ttsCache.keys().next().value!);
+    this.ttsCache.set(key, result);
+    this.audio(response, result.mime, result.body);
+  }
+
+  private audio(response: ServerResponse, mime: string, body: Buffer): void {
+    response.writeHead(200, {
+      'Content-Type': mime,
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    }).end(body);
   }
 
   private async onEditorRequest(request: IncomingMessage, response: ServerResponse, path: string): Promise<void> {
